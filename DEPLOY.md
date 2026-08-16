@@ -6,10 +6,16 @@ Ten plik dotyczy wyłącznie forka. Reszta repozytorium jest upstreamowa - nie z
 
 Jeden plik zmieniony względem upstreamu, więc merge tagów nie powinien generować konfliktów:
 
-- `docker-compose.yml` - wolumen `~/.hermes:/opt/data` zmieniony na
-  `${HERMES_DATA_DIR:-/data/hermes-agent}:/opt/data`, bo Coolify uruchamia
-  `docker compose` w kontekście, w którym `~` nie wskazuje na katalog domowy
-  użytkownika hosta.
+- `docker-compose.yml`:
+  - wolumen `~/.hermes:/opt/data` zmieniony na
+    `${HERMES_DATA_DIR:-/data/hermes-agent}:/opt/data`, bo Coolify uruchamia
+    `docker compose` w kontekście, w którym `~` nie wskazuje na katalog domowy
+    użytkownika hosta.
+  - dodatkowy wolumen `${SECOND_BRAIN_DIR:-/home/bartoszburaczewski/second-brain}:/opt/data/second-brain`
+    - montuje osobne repo `bartekburaczewski/second-brain` (Obsidian vault, sklonowane
+      do `~/second-brain` na hoście) do kontenera, żeby wbudowany skill `obsidian`
+      mógł z niego bezpośrednio czytać/pisać. Wymaga ustawienia `OBSIDIAN_VAULT_PATH=/opt/data/second-brain`
+      w `.env` kontenera - patrz sekcja "Pierwsza konfiguracja po wdrożeniu".
 - ten plik
 
 ## Gałęzie
@@ -49,17 +55,32 @@ Build Pack: **Docker Compose**.
 | `HERMES_UID` | zalecane | UID hosta, żeby pliki na wolumenie były czytelne poza kontenerem (`id -u`) |
 | `HERMES_GID` | zalecane | j.w. dla GID (`id -g`) |
 | `HERMES_DATA_DIR` | nie | override ścieżki na hoście dla `/opt/data`, domyślnie `/data/hermes-agent` |
+| `SECOND_BRAIN_DIR` | nie | override ścieżki na hoście dla `/opt/data/second-brain`, domyślnie `/home/bartoszburaczewski/second-brain` |
+
+Uwaga: `container_name` w compose (`hermes`, `hermes-dashboard`) jest kosmetyczny - Coolify
+i tak nadaje własne nazwy kontenerów (`gateway-<id>`, `dashboard-<id>`). Sprawdź faktyczną
+nazwę przez `docker ps` zamiast zakładać `hermes`.
 
 ## Pierwsza konfiguracja po wdrożeniu
 
-Model (subskrypcja Claude Pro/Max, paste-the-code flow, bez tunelu SSH):
+Model (subskrypcja Claude Pro/Max - **nie** `hermes auth add anthropic --type oauth`,
+to trafia w pulę "extra usage" zamiast w limit subskrypcji, patrz pamięć
+`project_hermes_agent_setup`). Zamiast tego `claude setup-token` na hoście, wynikowy
+token do `.env` kontenera jako `ANTHROPIC_TOKEN`.
 
-```bash
-docker exec -it hermes hermes setup
+Telegram gateway - `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOWED_USERS` w `.env` (prościej
+niż interaktywny `hermes gateway setup`).
+
+Second-brain vault - w `.env` kontenera:
+
+```
+OBSIDIAN_VAULT_PATH=/opt/data/second-brain
 ```
 
-Telegram gateway (token z @BotFather):
+**Ważne:** wyłącz `memory` i `session_search` (bug #65365, patrz pamięć
+`project_hermes_agent_setup`):
 
 ```bash
-docker exec -it hermes hermes gateway setup
+docker exec <container> hermes tools disable memory session_search --platform cli
+docker exec <container> hermes tools disable memory session_search --platform telegram
 ```

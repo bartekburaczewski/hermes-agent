@@ -46,6 +46,10 @@ services:
     volumes:
       - ${HERMES_DATA_DIR:-/data/hermes-agent}:/opt/data
       - ${SECOND_BRAIN_DIR:-/home/bartoszburaczewski/second-brain}:/opt/data/second-brain
+      # Dedicated deploy key (read-write, second-brain repo only - NOT the
+      # user's personal key) so the auto-sync cron job (see DEPLOY.md) can
+      # git pull/push from inside the container. Read-only mount.
+      - ${SECOND_BRAIN_DEPLOY_KEY:-/home/bartoszburaczewski/.ssh/second_brain_deploy_key}:/opt/data/second-brain-deploy-key:ro
     environment:
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}

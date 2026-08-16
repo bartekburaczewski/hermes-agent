@@ -16,6 +16,9 @@ Jeden plik zmieniony względem upstreamu, więc merge tagów nie powinien genero
       do `~/second-brain` na hoście) do kontenera, żeby wbudowany skill `obsidian`
       mógł z niego bezpośrednio czytać/pisać. Wymaga ustawienia `OBSIDIAN_VAULT_PATH=/opt/data/second-brain`
       w `.env` kontenera - patrz sekcja "Pierwsza konfiguracja po wdrożeniu".
+  - dodatkowy wolumen (read-only) `${SECOND_BRAIN_DEPLOY_KEY:-/home/bartoszburaczewski/.ssh/second_brain_deploy_key}:/opt/data/second-brain-deploy-key:ro`
+    - dedykowany klucz deploy (read-write, tylko do repo `second-brain`, NIE
+      osobisty klucz użytkownika) dla joba auto-sync - patrz "Auto-sync second-brain" niżej.
 - ten plik
 
 ## Gałęzie
@@ -56,6 +59,7 @@ Build Pack: **Docker Compose**.
 | `HERMES_GID` | zalecane | j.w. dla GID (`id -g`) |
 | `HERMES_DATA_DIR` | nie | override ścieżki na hoście dla `/opt/data`, domyślnie `/data/hermes-agent` |
 | `SECOND_BRAIN_DIR` | nie | override ścieżki na hoście dla `/opt/data/second-brain`, domyślnie `/home/bartoszburaczewski/second-brain` |
+| `SECOND_BRAIN_DEPLOY_KEY` | nie | override ścieżki na hoście do klucza deploy, domyślnie `/home/bartoszburaczewski/.ssh/second_brain_deploy_key` |
 
 Uwaga: `container_name` w compose (`hermes`, `hermes-dashboard`) jest kosmetyczny - Coolify
 i tak nadaje własne nazwy kontenerów (`gateway-<id>`, `dashboard-<id>`). Sprawdź faktyczną
@@ -84,3 +88,21 @@ OBSIDIAN_VAULT_PATH=/opt/data/second-brain
 docker exec <container> hermes tools disable memory session_search --platform cli
 docker exec <container> hermes tools disable memory session_search --platform telegram
 ```
+
+## Auto-sync second-brain
+
+Two-way git sync so the vault stays consistent between the server (Hermes) and the
+user's laptop (Obsidian + Web Clipper, writes to `2-Inbox/`). Script at
+`/opt/data/scripts/second-brain-sync.sh` inside the container, scheduled via a
+`--no-agent` cron job (no LLM call, just runs the script and delivers stdout):
+
+```bash
+hermes cron create "every 15m" --name second-brain-sync \
+  --script second-brain-sync.sh --no-agent --deliver origin
+```
+
+The script pulls first (rebase+autostash, picks up laptop-side clips), then commits
+and pushes anything Hermes wrote since the last sync. Uses `GIT_SSH_COMMAND` pointed
+at the mounted deploy key for that one process only - never touches the shared
+`.git/config` (which would break the host's own git access to the same repo, since
+`/opt/data/second-brain` is a bind mount of the same working tree).

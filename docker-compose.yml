@@ -119,8 +119,8 @@ services:
       - |
         test -x /opt/data/bin/multica || {
           mkdir -p /opt/data/bin
-          latest=$(curl -sI https://github.com/multica-ai/multica/releases/latest | grep -i '^location:' | sed 's#.*tag/##' | tr -d '\r\n')
-          version="${latest#v}"
-          curl -fsSL "https://github.com/multica-ai/multica/releases/download/${latest}/multica-cli-${version}-linux-amd64.tar.gz" | tar xz -C /opt/data/bin multica
+          latest=$$(curl -sI https://github.com/multica-ai/multica/releases/latest | grep -i '^location:' | sed 's#.*tag/##' | tr -d '\r\n')
+          version="$${latest#v}"
+          curl -fsSL "https://github.com/multica-ai/multica/releases/download/$${latest}/multica-cli-$${version}-linux-amd64.tar.gz" | tar xz -C /opt/data/bin multica
         }
         exec /opt/data/bin/multica daemon start --foreground

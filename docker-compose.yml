@@ -73,7 +73,39 @@ services:
       # - GOOGLE_CHAT_SUBSCRIPTION_NAME=${GOOGLE_CHAT_SUBSCRIPTION_NAME}
       # - GOOGLE_CHAT_SERVICE_ACCOUNT_JSON=${GOOGLE_CHAT_SERVICE_ACCOUNT_JSON}
       # - GOOGLE_CHAT_ALLOWED_USERS=${GOOGLE_CHAT_ALLOWED_USERS}
-    command: ["gateway", "run"]
+    # Runs the Multica (github.com/multica-ai/multica) runtime daemon as a
+    # background process INSIDE this same container, then execs the normal
+    # gateway. Deliberately NOT a separate compose service: a second
+    # container sharing this volume re-triggers
+    # /etc/cont-init.d/02-reconcile-profiles independently, which respawns
+    # full Telegram gateways for every profile marked "running" and
+    # duplicates this very container - see project_multica_integration
+    # memory for the 2026-08-25 outage this caused. Same container, same
+    # single reconcile pass, no duplication possible.
+    #
+    # The multica binary self-installs into the volume on first boot
+    # (idempotent). The inner `while` loop is load-bearing: before the
+    # one-time `multica login --token ...` (DEPLOY.md) has run, `multica
+    # daemon start` exits non-zero immediately - looping here means that
+    # exit never reaches Docker/Coolify as a crash.
+    command:
+      - sh
+      - -c
+      - |
+        test -x /opt/data/bin/multica || {
+          mkdir -p /opt/data/bin
+          latest=$$(curl -sI https://github.com/multica-ai/multica/releases/latest | grep -i '^location:' | sed 's#.*tag/##' | tr -d '\r\n')
+          version="$${latest#v}"
+          curl -fsSL "https://github.com/multica-ai/multica/releases/download/$${latest}/multica-cli-$${version}-linux-amd64.tar.gz" | tar xz -C /opt/data/bin multica
+        }
+        (
+          while true; do
+            /opt/data/bin/multica daemon start --foreground
+            echo "[multica-daemon] not ready yet (needs 'multica config set server_url/app_url' + 'multica login --token ...' first, see DEPLOY.md) - retrying in 30s" >&2
+            sleep 30
+          done
+        ) &
+        exec hermes gateway run
 
   dashboard:
     image: hermes-agent

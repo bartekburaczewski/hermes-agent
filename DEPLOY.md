@@ -19,6 +19,15 @@ Jeden plik zmieniony względem upstreamu, więc merge tagów nie powinien genero
   - dodatkowy wolumen (read-only) `${SECOND_BRAIN_DEPLOY_KEY:-/home/bartoszburaczewski/.ssh/second_brain_deploy_key}:/opt/data/second-brain-deploy-key:ro`
     - dedykowany klucz deploy (read-write, tylko do repo `second-brain`, NIE
       osobisty klucz użytkownika) dla joba auto-sync - patrz "Auto-sync second-brain" niżej.
+  - dodatkowy serwis `multica-daemon` - daemon Multiki (github.com/multica-ai/multica),
+    napędza tę samą instancję Hermesa jako agenta-teammate na boardzie Multiki przez
+    ACP (`hermes acp`). Współdzieli wolumen z `gateway`/`dashboard` celowo - ten sam
+    `ANTHROPIC_TOKEN`, te same wyłączone narzędzia `memory`/`session_search`, zero
+    dodatkowej autoryzacji. Self-installuje binarkę `multica` CLI do `/opt/data/bin`
+    przy pierwszym starcie. Patrz pamięć `project_multica_integration` po pełne
+    uzasadnienie (wybrano dzielony wolumen zamiast osobnego kontenera, żeby nie
+    dublować zasobów - akceptowalny koszt: redeploy restartuje cały stack, w tym
+    gateway/dashboard).
 - ten plik
 
 ## Gałęzie
@@ -87,6 +96,16 @@ OBSIDIAN_VAULT_PATH=/opt/data/second-brain
 ```bash
 docker exec <container> hermes tools disable memory session_search --platform cli
 docker exec <container> hermes tools disable memory session_search --platform telegram
+```
+
+Multica daemon - po pierwszym deployu, jednorazowo wskaż self-hostowany serwer i
+zaloguj CLI tokenem z panelu Multiki (Settings → API Token na `multica.doitflowly.com`):
+
+```bash
+docker exec hermes-multica-daemon /opt/data/bin/multica config set server_url https://multica-api.doitflowly.com
+docker exec hermes-multica-daemon /opt/data/bin/multica config set app_url https://multica.doitflowly.com
+docker exec hermes-multica-daemon /opt/data/bin/multica login --token <mul_...>
+docker exec hermes-multica-daemon /opt/data/bin/multica daemon status
 ```
 
 ## Auto-sync second-brain

@@ -90,3 +90,37 @@ services:
       - HERMES_GID=${HERMES_GID:-10000}
     # Localhost-only. For remote access, tunnel via `ssh -L 9119:localhost:9119`.
     command: ["dashboard", "--host", "127.0.0.1", "--no-open"]
+
+  # Multica (github.com/multica-ai/multica) runtime daemon — drives this same
+  # Hermes install as a "teammate" agent on a Multica board via ACP (`hermes
+  # acp`). Shares the gateway's volume/HERMES_HOME on purpose: same
+  # ANTHROPIC_TOKEN, same memory/session_search tool-disable already applied
+  # (see DEPLOY.md), no separate auth step needed. See project_multica_integration
+  # memory for the full rationale/tradeoffs (chose shared-volume over an
+  # isolated second container for lower resource usage).
+  multica-daemon:
+    image: hermes-agent
+    container_name: hermes-multica-daemon
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - gateway
+    volumes:
+      - ${HERMES_DATA_DIR:-/data/hermes-agent}:/opt/data
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+    # Self-installs the multica CLI into the persistent volume on first boot
+    # (idempotent — skips the download once /opt/data/bin/multica exists),
+    # then runs the daemon in the foreground so Docker/s6 can supervise it.
+    command:
+      - sh
+      - -c
+      - |
+        test -x /opt/data/bin/multica || {
+          mkdir -p /opt/data/bin
+          latest=$(curl -sI https://github.com/multica-ai/multica/releases/latest | grep -i '^location:' | sed 's#.*tag/##' | tr -d '\r\n')
+          version="${latest#v}"
+          curl -fsSL "https://github.com/multica-ai/multica/releases/download/${latest}/multica-cli-${version}-linux-amd64.tar.gz" | tar xz -C /opt/data/bin multica
+        }
+        exec /opt/data/bin/multica daemon start --foreground

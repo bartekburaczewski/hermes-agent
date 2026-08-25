@@ -111,8 +111,19 @@ services:
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
     # Self-installs the multica CLI into the persistent volume on first boot
-    # (idempotent — skips the download once /opt/data/bin/multica exists),
-    # then runs the daemon in the foreground so Docker/s6 can supervise it.
+    # (idempotent — skips the download once /opt/data/bin/multica exists).
+    #
+    # The outer `while` loop is load-bearing, not cosmetic: before the
+    # one-time `multica login --token ...` (see DEPLOY.md) is run, `multica
+    # daemon start` exits immediately with a non-zero status. Without this
+    # loop that exit becomes the container's exit, Docker's restart policy
+    # restarts it in a tight crash loop, and Coolify's own health/self-heal
+    # reaction to a crash-looping service in this compose project tore down
+    # the ENTIRE stack — including the unrelated, healthy gateway/dashboard
+    # containers, i.e. the live Telegram bot — during the first rollout of
+    # this service (2026-08-25). Looping *inside* the script instead means
+    # the container's main process never exits, so from Docker/Coolify's
+    # point of view this service is just quietly retrying, not crashing.
     command:
       - sh
       - -c
@@ -123,4 +134,8 @@ services:
           version="$${latest#v}"
           curl -fsSL "https://github.com/multica-ai/multica/releases/download/$${latest}/multica-cli-$${version}-linux-amd64.tar.gz" | tar xz -C /opt/data/bin multica
         }
-        exec /opt/data/bin/multica daemon start --foreground
+        while true; do
+          /opt/data/bin/multica daemon start --foreground && break
+          echo "[multica-daemon] not ready yet (needs 'multica config set server_url/app_url' + 'multica login --token ...' first, see DEPLOY.md) - retrying in 30s" >&2
+          sleep 30
+        done

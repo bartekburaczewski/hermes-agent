@@ -451,8 +451,17 @@ TOOLSETS = {
             "browser_press", "browser_get_images",
             "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
             "browser_exec",
-            "todo", "memory",
-            "session_search",
+            "todo",
+            # memory/session_search deliberately excluded (fork-local patch):
+            # exposing either tool schema on ANY Anthropic OAuth credential
+            # triggers a false "out of extra usage" 400, regardless of which
+            # credential (upstream bug #65365). acp_adapter/session.py's
+            # _make_agent() hardcodes this "hermes-acp" composite with no
+            # config override point reachable for a plain session (the only
+            # config.yaml agent.disabled_toolsets read site is the
+            # MCP-registration refresh path in acp_adapter/server.py, which
+            # never runs without editor-supplied MCP servers) - see
+            # project_multica_integration memory, 2026-08-26.
             "execute_code", "delegate_task",
         ],
         "includes": []
